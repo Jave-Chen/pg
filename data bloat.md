@@ -32,7 +32,8 @@ percona=# INSERT into scott.employee VALUES (generate_series(1,10),'avi',1);
 INSERT 0 10
 percona=# UPDATE scott.employee SET emp_name = 'avii';
 UPDATE 10
-percona=# SELECT t_xmin, t_xmax, tuple_data_split('scott.employee'::regclass, t_data, t_infomask, t_infomask2, t_bits) FROM heap_page_items(get_raw_page('scott.employee', 0));
+percona=# SELECT t_xmin, t_xmax, tuple_data_split('scott.employee'::regclass, t_data, t_infomask, t_infomask2, t_bits) 
+FROM heap_page_items(get_raw_page('scott.employee', 0));
  t_xmin | t_xmax |               tuple_data_split                
 --------+--------+-----------------------------------------------
     672 |    673 | {"\\x01000000","\\x09617669","\\x01000000"}
@@ -58,7 +59,8 @@ percona=# SELECT t_xmin, t_xmax, tuple_data_split('scott.employee'::regclass, t_
 
 percona=# VACUUM scott.employee ;
 VACUUM
-percona=# SELECT t_xmin, t_xmax, tuple_data_split('scott.employee'::regclass, t_data, t_infomask, t_infomask2, t_bits) FROM heap_page_items(get_raw_page('scott.employee', 0));
+percona=# SELECT t_xmin, t_xmax, tuple_data_split('scott.employee'::regclass, t_data, t_infomask, t_infomask2, t_bits) 
+FROM heap_page_items(get_raw_page('scott.employee', 0));
  t_xmin | t_xmax |               tuple_data_split                
 --------+--------+-----------------------------------------------
         |        | 
