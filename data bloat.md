@@ -103,3 +103,60 @@ Whenever you delete a row, it’s not actually deleted, it is only marked as una
 People often assume that VACUUM is the process that should return the disk space to the file system. It does do this but only in very specific cases. That used space is contained in page files that make up the tables and indexes (called objects from now on) in the Postgres database system. Page files all have the same size and differently sized objects just have as many page files as they need. If VACUUM happens to mark every row in a page file as unavailable AND that page also happens to be the final page for the entire object, THEN the disk space is returned to the file system. If there is a single available row, or the page file is any other but the last one, the disk space is never returned by a normal VACUUM. This is bloat. Hopefully this explanation of what bloat actually is shows you how it can sometimes be advantageous for certain usage patterns of tables as well, and why I’ve included the option to ignore objects in the report.
 
 Why bloat is actually a problem when it gets out of hand is not just the disk space it uses up. Every time a query is run against a table, the visibility flags on individual rows and index entries is checked to see if is actually available to that transaction. On large tables (or small tables with a lot of bloat) that time spent checking those flags builds up. This is especially noticeable with indexes where you expect an index scan to improve your query performance and it seems to be making no difference or is actually worse than a sequential scan of the whole table. And this is why index bloat is checked independently of table bloat since a table could have little to no bloat, but one or more of its indexes could be badly bloated. Index bloat (as long as it’s not a primary key) is easier to solve because you can either just reindex that one index, or you can concurrently create a new index on the same column and then drop the old one when it’s done.
+
+
+```sql
+-- Find all tables and when they were last vacuumed/analyzed, either manually or automatically
+SELECT relname, 
+       last_vacuum, 
+       last_autovacuum, 
+       last_analyze, 
+       last_autoanalyze 
+FROM   pg_stat_all_tables 
+WHERE  schemaname = 'public' 
+ORDER  BY last_vacuum DESC;
+
+-- Find any running processes that are doing autovacuum and which tables they're working on
+SELECT   pid, 
+         Age(query_start, Clock_timestamp()), 
+         usename, 
+         query 
+FROM     pg_stat_activity 
+WHERE    query != '<IDLE>' 
+AND      query ilike '%vacuum%' 
+ORDER BY query_start ASC;
+
+-- Find table/index sizes for all tables in a schema
+SELECT *, 
+       Pg_size_pretty(total_bytes) AS total, 
+       Pg_size_pretty(index_bytes) AS INDEX, 
+       Pg_size_pretty(toast_bytes) AS toast, 
+       Pg_size_pretty(table_bytes) AS TABLE 
+FROM   (SELECT *, 
+               total_bytes - index_bytes - Coalesce(toast_bytes, 0) AS 
+               table_bytes 
+        FROM   (SELECT c.oid, 
+                       nspname                               AS table_schema, 
+                       relname                               AS TABLE_NAME, 
+                       c.reltuples                           AS row_estimate, 
+                       Pg_total_relation_size(c.oid)         AS total_bytes, 
+                       Pg_indexes_size(c.oid)                AS index_bytes, 
+                       Pg_total_relation_size(reltoastrelid) AS toast_bytes 
+                FROM   pg_class c 
+                       LEFT JOIN pg_namespace n 
+                              ON n.oid = c.relnamespace 
+                WHERE  relkind = 'r') a 
+        WHERE  table_schema = 'public' 
+        ORDER  BY total_bytes DESC) a; 
+        
+        
+select schemaname||'.'||relname,
+	   n_dead_tup,
+	   n_live_tup,
+	   coalesce(round(n_dead_tup * 100 / (case when n_live_tup + n_dead_tup = 0 then null else n_live_tup + n_dead_tup end ),2),0.00) as dead_tup_ratio
+  from pg_stat_all_tables
+ where 1=1
+   and n_dead_tup >= 10000
+ order by dead_tup_ratio desc
+ limit 10
+```
